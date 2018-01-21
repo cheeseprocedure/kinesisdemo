@@ -111,7 +111,7 @@ func (c *Config) shardReader(client *kinesis.Kinesis, id int, shardId *string) e
 }
 
 // shardWatcher describes the Kinesis stream on a regular basis, creating new
-// shardReader goroutines if a previously-unseen stream becomes available.
+// shardReader goroutines if a previously-unseen shard becomes available.
 func (c *Config) shardWatcher(client *kinesis.Kinesis) {
 	log.Println("shardWatcher - starting...")
 
