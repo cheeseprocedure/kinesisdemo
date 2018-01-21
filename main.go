@@ -28,7 +28,7 @@ func (c *Config) payloadGenerator(writeChan chan *Payload) {
 	log.Println("payloadGenerator - starting...")
 	ticker := time.NewTicker(time.Millisecond * 1000)
 	for timestamp := range ticker.C {
-		log.Printf("payloadGenerator - timestamp: %v", timestamp)
+		log.Printf("payloadGenerator - writeChan depth: %d - timestamp: %v", len(writeChan), timestamp)
 		writeChan <- &Payload{
 			Event:     "hi mom",
 			Timestamp: timestamp.UTC().String(),
@@ -48,13 +48,18 @@ func (c *Config) streamWriter(client *kinesis.Kinesis, writeChan chan *Payload) 
 			PartitionKey: &payload.Timestamp,
 			StreamName:   &c.StreamName,
 		}
-		log.Printf("streamWriter - Kinesis input: %+v", input)
-		output, err := client.PutRecord(input)
-		if err != nil {
-			log.Printf("streamWriter - error putting record to Kinesis: %s", err)
-			continue
+		for {
+			log.Printf("streamWriter - Kinesis input: %+v", input)
+			output, err := client.PutRecord(input)
+			if err != nil {
+				log.Printf("streamWriter - error putting record to Kinesis: %s", err)
+				log.Printf("streamWriter - sleeping 5 seconds before retrying")
+				time.Sleep(5 * time.Second)
+				continue
+			}
+			log.Printf("streamWriter - shard / seq: %s / %s", *output.ShardId, *output.SequenceNumber)
+			break
 		}
-		log.Printf("streamWriter - shard / seq: %s / %s", *output.ShardId, *output.SequenceNumber)
 	}
 }
 
@@ -128,6 +133,9 @@ func (c *Config) shardWatcher(client *kinesis.Kinesis) {
 		stream, err := client.DescribeStream(describeStreamInput)
 		if err != nil {
 			log.Printf("shardWatcher - error describing stream '%s': %s", c.StreamName, err)
+			log.Printf("shardWatcher - sleeping 5 seconds before retrying")
+			time.Sleep(5 * time.Second)
+			continue
 		}
 		log.Printf("shardWatcher - shards found: %d", len(stream.StreamDescription.Shards))
 		for _, shard := range stream.StreamDescription.Shards {
@@ -175,7 +183,7 @@ func main() {
 	}))
 	client := kinesis.New(sess)
 
-	writeChan := make(chan *Payload)
+	writeChan := make(chan *Payload, 100)
 
 	// TODO pass in context
 	var wg sync.WaitGroup
