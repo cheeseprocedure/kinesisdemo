@@ -58,7 +58,7 @@ func (c *Config) streamWriter(client *kinesis.Kinesis, writeChan chan *Payload) 
 	}
 }
 
-func (c *Config) shardReader(client *kinesis.Kinesis, id int, shardId *string, readChan chan *Payload) error {
+func (c *Config) shardReader(client *kinesis.Kinesis, id int, shardId *string) error {
 	log.Printf("shardReader[%d] - starting...", id)
 
 	shardIteratorType := kinesis.ShardIteratorTypeTrimHorizon
@@ -112,7 +112,7 @@ func (c *Config) shardReader(client *kinesis.Kinesis, id int, shardId *string, r
 
 // shardWatcher describes the Kinesis stream on a regular basis, creating new
 // shardReader goroutines if a previously-unseen stream becomes available.
-func (c *Config) shardWatcher(client *kinesis.Kinesis, readChan chan *Payload) {
+func (c *Config) shardWatcher(client *kinesis.Kinesis) {
 	log.Println("shardWatcher - starting...")
 
 	// shardId -> shardIsActive
@@ -140,7 +140,7 @@ func (c *Config) shardWatcher(client *kinesis.Kinesis, readChan chan *Payload) {
 				// Remove from map when goroutine exits to make sure we
 				// recover from a goroutine that's exited too early
 				go func(id int, shardId *string) {
-					err := c.shardReader(client, id, shardId, readChan)
+					err := c.shardReader(client, id, shardId)
 					if err == nil {
 						// The reader exited OK after its shard was closed and
 						// all records were read! We'll remember it (but mark
@@ -175,14 +175,13 @@ func main() {
 	}))
 	client := kinesis.New(sess)
 
-	readChan := make(chan *Payload)
 	writeChan := make(chan *Payload)
 
 	// TODO pass in context
 	var wg sync.WaitGroup
 	wg.Add(3)
 	go config.payloadGenerator(writeChan)
-	go config.shardWatcher(client, readChan)
+	go config.shardWatcher(client)
 	go config.streamWriter(client, writeChan)
 	wg.Wait()
 }
